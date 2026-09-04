@@ -1,0 +1,42 @@
+name: Daily Stock Alert
+
+# [1] 스케줄러: 여기가 "매일 정해진 시각에 자동 실행"을 담당하는 부분
+on:
+  schedule:
+    # UTC 기준 cron. 22:00 UTC = 다음날 07:00 KST (한국시간 오전 7시)
+    - cron: "0 22 * * *"
+  workflow_dispatch: # Actions 탭에서 수동으로 "Run workflow" 버튼도 누를 수 있게 해줌
+
+# data/stock_alert.db 변경사항을 리포에 다시 커밋하려면 쓰기 권한이 필요
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      # [2]+[3]+[4]+[5]+[6] 전부 이 한 줄 안에서 실행됨 (stock_alert_system.py 참고)
+      - name: 일일 체크 실행
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python stock_alert_system.py
+
+      # [6] DB 저장의 연장: 다음 실행이 "어제 상태"를 이어받을 수 있도록,
+      # 이번 실행에서 바뀐 data/stock_alert.db를 리포지토리에 다시 커밋해둔다.
+      - name: DB 변경사항 커밋
+        run: |
+          git config user.name "stock-alert-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/stock_alert.db
+          git diff --cached --quiet || git commit -m "Update signal history $(date -u +%Y-%m-%d)"
+          git push
